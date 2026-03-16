@@ -1,0 +1,675 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🖐️ 手势粒子互动</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            background: #0a0a0a;
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            overflow: hidden;
+            color: white;
+        }
+        
+        .container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+        }
+        
+        /* 视频元素（隐藏） */
+        #video {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            width: 200px;
+            height: 150px;
+            border-radius: 10px;
+            border: 2px solid #00ff88;
+            z-index: 10;
+            transform: scaleX(-1);
+        }
+        
+        /* Canvas 层 */
+        #particleCanvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+        
+        /* 控制面板 */
+        .control-panel {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 20px;
+            border-radius: 15px;
+            border: 1px solid #00ff88;
+            z-index: 100;
+            max-width: 350px;
+        }
+        
+        h1 {
+            font-size: 24px;
+            margin-bottom: 15px;
+            background: linear-gradient(135deg, #00ff88, #00ccff);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        
+        .status {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 15px;
+            padding: 10px;
+            background: rgba(0, 255, 136, 0.1);
+            border-radius: 8px;
+        }
+        
+        .status-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #ff4444;
+            animation: pulse 1s infinite;
+        }
+        
+        .status-dot.active {
+            background: #00ff88;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        
+        .gesture-info {
+            background: rgba(0, 204, 255, 0.1);
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+        }
+        
+        .gesture-display {
+            font-size: 48px;
+            text-align: center;
+            margin: 10px 0;
+            min-height: 60px;
+        }
+        
+        .mode-buttons {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+        
+        .mode-btn {
+            flex: 1;
+            padding: 12px;
+            border: none;
+            border-radius: 8px;
+            background: rgba(0, 255, 136, 0.2);
+            color: #00ff88;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .mode-btn.active {
+            background: #00ff88;
+            color: #000;
+        }
+        
+        .mode-btn:hover {
+            background: rgba(0, 255, 136, 0.4);
+        }
+        
+        .instructions {
+            font-size: 13px;
+            color: #aaa;
+            line-height: 1.6;
+        }
+        
+        .instructions h3 {
+            color: #00ccff;
+            margin: 10px 0 5px;
+            font-size: 14px;
+        }
+        
+        /* 加载动画 */
+        .loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            z-index: 1000;
+        }
+        
+        .spinner {
+            width: 60px;
+            height: 60px;
+            border: 4px solid rgba(0, 255, 136, 0.2);
+            border-top-color: #00ff88;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        /* 粒子计数 */
+        .particle-count {
+            font-size: 12px;
+            color: #666;
+            text-align: right;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- 加载动画 -->
+        <div class="loading" id="loading">
+            <div class="spinner"></div>
+            <div>正在加载手势识别模型...</div>
+            <div style="color: #666; margin-top: 10px;">首次加载可能需要 30 秒</div>
+        </div>
+        
+        <!-- 视频预览 -->
+        <video id="video" autoplay playsinline></video>
+        
+        <!-- 粒子 Canvas -->
+        <canvas id="particleCanvas"></canvas>
+        
+        <!-- 控制面板 -->
+        <div class="control-panel">
+            <h1>🖐️ 手势粒子互动</h1>
+            
+            <div class="status">
+                <div class="status-dot" id="statusDot"></div>
+                <span id="statusText">正在启动摄像头...</span>
+            </div>
+            
+            <div class="gesture-info">
+                <div>当前手势:</div>
+                <div class="gesture-display" id="gestureDisplay">🖐️</div>
+                <div style="text-align: center; color: #00ccff;" id="gestureText">检测中...</div>
+            </div>
+            
+            <div class="mode-buttons">
+                <button class="mode-btn active" onclick="setMode('number')">
+                    🔢 数字模式
+                </button>
+                <button class="mode-btn" onclick="setMode('follow')">
+                    👆 跟随模式
+                </button>
+            </div>
+            
+            <div class="instructions">
+                <h3>🔢 数字模式</h3>
+                <p>伸出手指比划 1-5，粒子会自动组成对应数字</p>
+                
+                <h3>👆 跟随模式</h3>
+                <p>挥手引导粒子流动，手掌推动粒子运动</p>
+                
+                <h3>💡 提示</h3>
+                <p>• 确保光线充足</p>
+                <p>• 手势在摄像头中心</p>
+                <p>• 手指伸直便于识别</p>
+            </div>
+            
+            <div class="particle-count">粒子数：<span id="particleCount">0</span></div>
+        </div>
+    </div>
+    
+    <!-- MediaPipe Hands -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+    
+    <script>
+        // ==================== 全局变量 ====================
+        let canvas, ctx;
+        let video;
+        let hands;
+        let camera;
+        let particles = [];
+        let currentMode = 'number'; // 'number' or 'follow'
+        let currentGesture = null;
+        let handLandmarks = null;
+        let isCameraActive = false;
+        
+        // 粒子配置
+        const PARTICLE_CONFIG = {
+            count: 3000,
+            size: 2,
+            speed: 2,
+            colors: ['#00ff88', '#00ccff', '#ff00ff', '#ffff00', '#00ff00']
+        };
+        
+        // 数字模板（5x7 点阵）
+        const NUMBER_TEMPLATES = {
+            1: [
+                [0,1,0],
+                [1,1,0],
+                [0,1,0],
+                [0,1,0],
+                [0,1,0],
+                [0,1,0],
+                [1,1,1]
+            ],
+            2: [
+                [1,1,1],
+                [0,0,1],
+                [1,1,1],
+                [1,0,0],
+                [1,0,0],
+                [1,0,0],
+                [1,1,1]
+            ],
+            3: [
+                [1,1,1],
+                [0,0,1],
+                [0,0,1],
+                [1,1,1],
+                [0,0,1],
+                [0,0,1],
+                [1,1,1]
+            ],
+            4: [
+                [1,0,1],
+                [1,0,1],
+                [1,0,1],
+                [1,1,1],
+                [0,0,1],
+                [0,0,1],
+                [0,0,1]
+            ],
+            5: [
+                [1,1,1],
+                [1,0,0],
+                [1,0,0],
+                [1,1,1],
+                [0,0,1],
+                [0,0,1],
+                [1,1,1]
+            ]
+        };
+        
+        // ==================== 初始化 ====================
+        window.addEventListener('load', init);
+        
+        function init() {
+            canvas = document.getElementById('particleCanvas');
+            ctx = canvas.getContext('2d');
+            video = document.getElementById('video');
+            
+            resizeCanvas();
+            window.addEventListener('resize', resizeCanvas);
+            
+            initParticles();
+            initHands();
+            startAnimation();
+        }
+        
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        
+        // ==================== 粒子系统 ====================
+        class Particle {
+            constructor() {
+                this.reset();
+            }
+            
+            reset() {
+                this.x = Math.random() * canvas.width;
+                this.y = Math.random() * canvas.height;
+                this.vx = (Math.random() - 0.5) * PARTICLE_CONFIG.speed;
+                this.vy = (Math.random() - 0.5) * PARTICLE_CONFIG.speed;
+                this.color = PARTICLE_CONFIG.colors[Math.floor(Math.random() * PARTICLE_CONFIG.colors.length)];
+                this.size = Math.random() * PARTICLE_CONFIG.size + 1;
+                this.targetX = null;
+                this.targetY = null;
+                this.friction = 0.95;
+            }
+            
+            update() {
+                if (this.targetX !== null && this.targetY !== null) {
+                    // 向目标位置移动
+                    const dx = this.targetX - this.x;
+                    const dy = this.targetY - this.y;
+                    this.vx += dx * 0.05;
+                    this.vy += dy * 0.05;
+                    this.vx *= this.friction;
+                    this.vy *= this.friction;
+                } else if (currentMode === 'follow' && handLandmarks) {
+                    // 跟随模式：被手吸引
+                    const wristX = handLandmarks[0].x * canvas.width;
+                    const wristY = handLandmarks[0].y * canvas.height;
+                    
+                    const dx = wristX - this.x;
+                    const dy = wristY - this.y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    
+                    if (dist < 300) {
+                        this.vx += dx * 0.001;
+                        this.vy += dy * 0.001;
+                    }
+                }
+                
+                this.x += this.vx;
+                this.y += this.vy;
+                
+                // 边界检查
+                if (this.x < 0 || this.x > canvas.width) this.vx *= -1;
+                if (this.y < 0 || this.y > canvas.height) this.vy *= -1;
+            }
+            
+            draw() {
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fillStyle = this.color;
+                ctx.fill();
+            }
+            
+            setTarget(x, y) {
+                this.targetX = x;
+                this.targetY = y;
+            }
+            
+            clearTarget() {
+                this.targetX = null;
+                this.targetY = null;
+            }
+        }
+        
+        function initParticles() {
+            particles = [];
+            for (let i = 0; i < PARTICLE_CONFIG.count; i++) {
+                particles.push(new Particle());
+            }
+            updateParticleCount();
+        }
+        
+        function updateParticleCount() {
+            document.getElementById('particleCount').textContent = particles.length;
+        }
+        
+        // ==================== 手势识别 ====================
+        function initHands() {
+            hands = new Hands({locateFile: (file) => {
+                return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
+            }});
+            
+            hands.setOptions({
+                maxNumHands: 1,
+                modelComplexity: 1,
+                minDetectionConfidence: 0.7,
+                minTrackingConfidence: 0.5
+            });
+            
+            hands.onResults(onHandsResults);
+            
+            // 启动摄像头
+            startCamera();
+        }
+        
+        async function startCamera() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: {
+                        width: 640,
+                        height: 480,
+                        facingMode: 'user'
+                    }
+                });
+                
+                video.srcObject = stream;
+                video.onloadedmetadata = () => {
+                    video.play();
+                    isCameraActive = true;
+                    updateStatus('active', '摄像头已启动');
+                    detectGesture();
+                };
+            } catch (err) {
+                console.error('摄像头启动失败:', err);
+                updateStatus('error', '摄像头启动失败：' + err.message);
+            }
+        }
+        
+        function detectGesture() {
+            if (!isCameraActive) {
+                setTimeout(detectGesture, 1000);
+                return;
+            }
+            
+            hands.send({image: video}).catch(err => {
+                console.error('手势识别失败:', err);
+            });
+            
+            setTimeout(detectGesture, 50);
+        }
+        
+        function onHandsResults(results) {
+            document.getElementById('loading').style.display = 'none';
+            
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                handLandmarks = results.multiHandLandmarks[0];
+                const gesture = recognizeGesture(handLandmarks);
+                currentGesture = gesture;
+                
+                updateGestureDisplay(gesture);
+                
+                if (currentMode === 'number' && gesture.number) {
+                    formNumber(gesture.number);
+                }
+            } else {
+                handLandmarks = null;
+                currentGesture = null;
+                updateGestureDisplay(null);
+                
+                if (currentMode === 'number') {
+                    particles.forEach(p => p.clearTarget());
+                }
+            }
+        }
+        
+        function recognizeGesture(landmarks) {
+            // 计算手指是否伸直
+            const fingers = {
+                thumb: isFingerExtended(landmarks, 4, 3, 2),
+                index: isFingerExtended(landmarks, 8, 6, 5),
+                middle: isFingerExtended(landmarks, 12, 10, 9),
+                ring: isFingerExtended(landmarks, 16, 14, 13),
+                pinky: isFingerExtended(landmarks, 20, 18, 17)
+            };
+            
+            const extendedCount = Object.values(fingers).filter(f => f).length;
+            
+            // 识别数字手势
+            let number = null;
+            let gestureName = '手掌';
+            let gestureEmoji = '🖐️';
+            
+            if (fingers.index && !fingers.middle && !fingers.ring && !fingers.pinky) {
+                number = 1;
+                gestureName = '数字 1';
+                gestureEmoji = '☝️';
+            } else if (fingers.index && fingers.middle && !fingers.ring && !fingers.pinky) {
+                number = 2;
+                gestureName = '数字 2';
+                gestureEmoji = '✌️';
+            } else if (fingers.index && fingers.middle && fingers.ring && !fingers.pinky) {
+                number = 3;
+                gestureName = '数字 3';
+                gestureEmoji = '🤟';
+            } else if (fingers.index && fingers.middle && fingers.ring && fingers.pinky && !fingers.thumb) {
+                number = 4;
+                gestureName = '数字 4';
+                gestureEmoji = '🖖';
+            } else if (fingers.index && fingers.middle && fingers.ring && fingers.pinky && fingers.thumb) {
+                number = 5;
+                gestureName = '数字 5';
+                gestureEmoji = '🖐️';
+            } else if (!fingers.index && !fingers.middle && !fingers.ring && !fingers.pinky) {
+                gestureName = '拳头';
+                gestureEmoji = '✊';
+            }
+            
+            return { number, name: gestureName, emoji: gestureEmoji, fingers };
+        }
+        
+        function isFingerExtended(landmarks, tipId, pipId, mcpId) {
+            const tip = landmarks[tipId];
+            const pip = landmarks[pipId];
+            const mcp = landmarks[mcpId];
+            
+            // 简单判断：指尖高于指根
+            return tip.y < mcp.y;
+        }
+        
+        function updateGestureDisplay(gesture) {
+            const display = document.getElementById('gestureDisplay');
+            const text = document.getElementById('gestureText');
+            
+            if (gesture) {
+                display.textContent = gesture.emoji;
+                text.textContent = `${gesture.name}${gesture.number ? ` (${gesture.number})` : ''}`;
+            } else {
+                display.textContent = '🖐️';
+                text.textContent = '检测中...';
+            }
+        }
+        
+        // ==================== 粒子效果 ====================
+        function formNumber(number) {
+            const template = NUMBER_TEMPLATES[number];
+            if (!template) return;
+            
+            const gridSize = 80;
+            const startX = canvas.width / 2 - (template[0].length * gridSize) / 2;
+            const startY = canvas.height / 2 - (template.length * gridSize) / 2;
+            
+            let particleIndex = 0;
+            
+            // 为每个粒子分配目标位置
+            particles.forEach((particle, index) => {
+                const gridX = index % template[0].length;
+                const gridY = Math.floor(index / template[0].length) % template.length;
+                
+                if (gridY < template.length && template[gridY][gridX] === 1) {
+                    const targetX = startX + gridX * gridSize + gridSize / 2;
+                    const targetY = startY + gridY * gridSize + gridSize / 2;
+                    
+                    // 添加一些随机偏移
+                    const offsetX = (Math.random() - 0.5) * 20;
+                    const offsetY = (Math.random() - 0.5) * 20;
+                    
+                    particle.setTarget(targetX + offsetX, targetY + offsetY);
+                } else {
+                    // 不在数字范围内的粒子自由运动
+                    particle.clearTarget();
+                }
+            });
+        }
+        
+        function setMode(mode) {
+            currentMode = mode;
+            
+            // 更新按钮状态
+            document.querySelectorAll('.mode-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            event.target.classList.add('active');
+            
+            // 重置粒子
+            if (mode === 'follow') {
+                particles.forEach(p => p.clearTarget());
+            }
+        }
+        
+        function updateStatus(status, text) {
+            const dot = document.getElementById('statusDot');
+            const statusText = document.getElementById('statusText');
+            
+            dot.className = 'status-dot';
+            if (status === 'active') {
+                dot.classList.add('active');
+            }
+            
+            statusText.textContent = text;
+        }
+        
+        // ==================== 动画循环 ====================
+        function startAnimation() {
+            function animate() {
+                // 清空画布（带拖尾效果）
+                ctx.fillStyle = 'rgba(10, 10, 10, 0.2)';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                
+                // 更新和绘制粒子
+                particles.forEach(particle => {
+                    particle.update();
+                    particle.draw();
+                });
+                
+                // 绘制手部骨架（如果检测到手）
+                if (handLandmarks) {
+                    drawHandSkeleton(handLandmarks);
+                }
+                
+                requestAnimationFrame(animate);
+            }
+            
+            animate();
+        }
+        
+        function drawHandSkeleton(landmarks) {
+            const connections = [
+                [0, 1], [1, 2], [2, 3], [3, 4], // 拇指
+                [0, 5], [5, 6], [6, 7], [7, 8], // 食指
+                [0, 9], [9, 10], [10, 11], [11, 12], // 中指
+                [0, 13], [13, 14], [14, 15], [15, 16], // 无名指
+                [0, 17], [17, 18], [18, 19], [19, 20] // 小指
+            ];
+            
+            ctx.strokeStyle = '#00ff88';
+            ctx.lineWidth = 2;
+            
+            connections.forEach(([i, j]) => {
+                const start = landmarks[i];
+                const end = landmarks[j];
+                
+                ctx.beginPath();
+                ctx.moveTo(start.x * canvas.width, start.y * canvas.height);
+                ctx.lineTo(end.x * canvas.width, end.y * canvas.height);
+                ctx.stroke();
+            });
+            
+            // 绘制关键点
+            landmarks.forEach((point, index) => {
+                ctx.beginPath();
+                ctx.arc(point.x * canvas.width, point.y * canvas.height, 5, 0, Math.PI * 2);
+                ctx.fillStyle = index === 0 ? '#ff00ff' : '#00ccff';
+                ctx.fill();
+            });
+        }
+    </script>
+</body>
+</html>
