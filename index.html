@@ -236,10 +236,10 @@
         </div>
     </div>
     
-    <!-- MediaPipe Hands -->
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+    <!-- MediaPipe Hands (使用国内镜像加速) -->
+    <script src="https://cdn.bootcdn.net/ajax/libs/mediapipe/0.5.1675469240/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.bootcdn.net/ajax/libs/mediapipe/0.5.1675469240/control_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.bootcdn.net/ajax/libs/mediapipe/0.5.1675469240/hands.js" crossorigin="anonymous"></script>
     
     <script>
         // ==================== 全局变量 ====================
@@ -412,22 +412,113 @@
         }
         
         // ==================== 手势识别 ====================
+        let loadTimeout;
+        
         function initHands() {
-            hands = new Hands({locateFile: (file) => {
-                return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
-            }});
+            // 显示加载提示
+            const loadingEl = document.getElementById('loading');
             
-            hands.setOptions({
-                maxNumHands: 1,
-                modelComplexity: 1,
-                minDetectionConfidence: 0.7,
-                minTrackingConfidence: 0.5
+            try {
+                hands = new Hands({locateFile: (file) => {
+                    // 优先使用国内 CDN
+                    return `https://cdn.bootcdn.net/ajax/libs/mediapipe/0.5.1675469240/${file}`;
+                }});
+                
+                hands.setOptions({
+                    maxNumHands: 1,
+                    modelComplexity: 1,
+                    minDetectionConfidence: 0.7,
+                    minTrackingConfidence: 0.5
+                });
+                
+                hands.onResults(onHandsResults);
+                
+                // 设置加载超时（15 秒）
+                loadTimeout = setTimeout(() => {
+                    if (document.getElementById('loading').style.display !== 'none') {
+                        showFallbackMode();
+                    }
+                }, 15000);
+                
+                // 启动摄像头
+                startCamera();
+            } catch (err) {
+                console.error('MediaPipe 加载失败:', err);
+                showFallbackMode();
+            }
+        }
+        
+        function showFallbackMode() {
+            const loadingEl = document.getElementById('loading');
+            loadingEl.innerHTML = `
+                <div style="text-align: center;">
+                    <div style="font-size: 60px; margin-bottom: 20px;">🎨</div>
+                    <h3 style="color: #00ff88; margin-bottom: 15px;">模型加载超时</h3>
+                    <p style="color: #aaa; margin-bottom: 20px;">已切换到鼠标互动模式</p>
+                    <button onclick="retryLoad()" style="background: #00ff88; color: #000; border: none; padding: 12px 30px; border-radius: 8px; font-size: 16px; cursor: pointer; margin: 10px;">
+                        🔄 重试加载摄像头
+                    </button>
+                    <p style="color: #666; margin-top: 20px; font-size: 13px;">
+                        现在可以用鼠标引导粒子！<br>
+                        点击屏幕产生粒子，拖动引导运动
+                    </p>
+                </div>
+            `;
+            
+            // 启用鼠标互动
+            enableMouseInteraction();
+        }
+        
+        function retryLoad() {
+            location.reload();
+        }
+        
+        let mouseInteractionEnabled = false;
+        
+        function enableMouseInteraction() {
+            mouseInteractionEnabled = true;
+            document.getElementById('loading').style.display = 'none';
+            updateStatus('active', '鼠标互动模式');
+            
+            canvas.addEventListener('mousemove', (e) => {
+                if (!mouseInteractionEnabled) return;
+                
+                const rect = canvas.getBoundingClientRect();
+                const mouseX = e.clientX - rect.left;
+                const mouseY = e.clientY - rect.top;
+                
+                // 吸引粒子到鼠标位置
+                particles.forEach(particle => {
+                    const dx = mouseX - particle.x;
+                    const dy = mouseY - particle.y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    
+                    if (dist < 400) {
+                        particle.vx += dx * 0.0005;
+                        particle.vy += dy * 0.0005;
+                    }
+                });
             });
             
-            hands.onResults(onHandsResults);
-            
-            // 启动摄像头
-            startCamera();
+            canvas.addEventListener('click', (e) => {
+                if (!mouseInteractionEnabled) return;
+                
+                const rect = canvas.getBoundingClientRect();
+                const mouseX = e.clientX - rect.left;
+                const mouseY = e.clientY - rect.top;
+                
+                // 点击产生爆炸效果
+                particles.forEach(particle => {
+                    const dx = particle.x - mouseX;
+                    const dy = particle.y - mouseY;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    
+                    if (dist < 300) {
+                        particle.vx += dx * 0.01;
+                        particle.vy += dy * 0.01;
+                    }
+                });
+            });
         }
         
         async function startCamera() {
@@ -467,6 +558,11 @@
         }
         
         function onHandsResults(results) {
+            // 清除加载超时
+            if (loadTimeout) {
+                clearTimeout(loadTimeout);
+            }
+            
             document.getElementById('loading').style.display = 'none';
             
             if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
